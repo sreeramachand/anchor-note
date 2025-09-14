@@ -1,0 +1,36 @@
+# main.kv -- simple Kivy UI to show pending tasks and a button to open checklist
+# Save as android/kivy_assets/kv/main.kv
+
+<MainBox>:
+    orientation: "vertical"
+    padding: dp(12)
+    spacing: dp(8)
+
+    BoxLayout:
+        size_hint_y: None
+        height: dp(48)
+        Label:
+            id: title
+            text: "Anchor Note"
+            font_size: "18sp"
+            bold: True
+
+    Label:
+        id: pending_count
+        text: "Pending tasks: 0"
+        size_hint_y: None
+        height: dp(36)
+
+    Button:
+        text: "Open Checklist"
+        size_hint_y: None
+        height: dp(44)
+        on_release: app.open_checklist()
+
+    BoxLayout:
+        orientation: "vertical"
+        Label:
+            text: "App is running. Reminders will appear as notifications."
+
+    Widget:
+        size_hint_y: 0.2

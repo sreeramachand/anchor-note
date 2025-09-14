@@ -1,36 +1,79 @@
-name: 🚀 Publish to PyPI
+name: Sign Windows EXEs (manual)
 
+# This workflow is intended to be run manually (workflow_dispatch) after build artifacts are uploaded
 on:
-  push:
-    tags:
-      - 'v*'  # Triggers when you push a version tag
+  workflow_dispatch:
+    inputs:
+      artifact_path:
+        description: 'Path (relative) to the EXE to sign (e.g., dist\\sticky_remind_agent\\sticky_remind_agent.exe)'
+        required: true
+        default: 'dist\\sticky_remind_agent\\sticky_remind_agent.exe'
+      timestamp_url:
+        description: 'RFC3161 timestamp server URL'
+        required: false
+        default: 'http://timestamp.digicert.com'
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
-  build-and-publish:
-    name: Build and publish to PyPI
-    runs-on: ubuntu-latest
-
+  sign-exe:
+    name: Sign EXE (Windows)
+    runs-on: windows-latest
     steps:
-      - name: 🧾 Checkout code
+      - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: 🐍 Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12.0'
-
-      - name: 🔧 Install build tool
+      - name: Prepare PFX file from secret
+        env:
+          PFX_B64: ${{ secrets.SIGNING_PFX_BASE64 }}
+          PFX_PASS: ${{ secrets.SIGNING_PFX_PASSWORD }}
         run: |
-          python -m pip install --upgrade build twine
+          if (-not $env:PFX_B64) {
+            Write-Error "SIGNING_PFX_BASE64 secret not found. Store your base64-encoded PFX in the repository secret SIGNING_PFX_BASE64"
+            exit 1
+          }
+          $pfxPath = "$env:USERPROFILE\\signing_cert.pfx"
+          [System.IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:PFX_B64))
+          Write-Host "Wrote PFX to $pfxPath"
+          # Import the PFX into the CurrentUser My store (so signtool can use it)
+          certutil -p $env:PFX_PASS -importpfx $pfxPath NoExport
 
-      - name: 📦 Build package
+      - name: Find signtool.exe
+        id: findsigntool
         run: |
-          python -m build
-
-      - name: 🚀 Publish to PyPI
+          $candidates = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter "signtool.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $candidates) {
+            Write-Error "signtool.exe not found in Windows Kits path. Ensure Windows SDK is installed on the runner."
+            exit 1
+          }
+          Write-Host "::set-output name=path::${candidates.FullName}"
+      - name: Sign the EXE
+        env:
+          SIGN_TOOL: ${{ steps.findsigntool.outputs.path }}
+          PFX_PASS: ${{ secrets.SIGNING_PFX_PASSWORD }}
         run: |
-         
-       
+          $signtool = "${env:SIGN_TOOL}"
+          Write-Host "Using signtool: $signtool"
+          $artifact = "${{ github.event.inputs.artifact_path }}"
+          if (-not (Test-Path $artifact)) {
+            Write-Error "Artifact not found: $artifact"
+            exit 1
+          }
+          # Find a suitable cert in CurrentUser\My with a private key (we assume import succeeded)
+          $cert = Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.HasPrivateKey } | Select-Object -First 1
+          if (-not $cert) {
+            Write-Error "No certificate with private key found in CurrentUser\\My store. Check import step."
+            exit 1
+          }
+          $thumb = $cert.Thumbprint
+          Write-Host "Signing $artifact with cert thumbprint $thumb"
+          & $signtool sign /fd SHA256 /sha1 $thumb /tr "${{ github.event.inputs.timestamp_url }}" /td SHA256 $artifact
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Write-Host "Signature complete."
+      - name: Verify signature
+        run: |
+          $artifact = "${{ github.event.inputs.artifact_path }}"
+          $signtool = "${{ steps.findsigntool.outputs.path }}"
+          & $signtool verify /pa /v $artifact

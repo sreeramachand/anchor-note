@@ -1,36 +1,48 @@
-name: 🚀 Publish to PyPI
+name: Build Android (Buildozer Docker)
 
 on:
+  workflow_dispatch:
   push:
-    tags:
-      - 'v*'  # Triggers when you push a version tag
+    branches: [ main ]
 
 permissions:
   contents: read
 
 jobs:
-  build-and-publish:
-    name: Build and publish to PyPI
+  build-android:
+    name: Build Android (in Docker)
     runs-on: ubuntu-latest
-
     steps:
-      - name: 🧾 Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: 🐍 Set up Python
-        uses: actions/setup-python@v5
+      - name: Prepare keystore (optional)
+        if: secrets.ANDROID_KEYSTORE_BASE64 != ''
+        run: |
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/keystore.jks
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+
+      - name: Run Buildozer (Docker image)
+        env:
+          PWD: ${{ github.workspace }}
+        run: |
+          # Use official/community Buildozer image. Mount repo into container and run buildozer.
+          # This command will produce bin/*.apk or bin/*.aab under the project dir.
+          docker run --rm -v "${{ github.workspace }}":/home/user/host -w /home/user/host/android kivy/buildozer:latest \
+            /bin/bash -lc "buildozer -v android debug"
+
+      - name: Collect APK/AAB artifacts
+        run: |
+          echo "Listing possible apk/aab outputs..."
+          find . -type f -name "*.apk" -o -name "*.aab" || true
+          mkdir -p android_artifacts
+          # copy anything under bin/ or ./.buildozer
+          cp -v $(find . -type f -name "*.apk" -o -name "*.aab" 2>/dev/null) android_artifacts/ || true
+          ls -la android_artifacts || true
+
+      - name: Upload Android artifacts
+        uses: actions/upload-artifact@v4
         with:
-          python-version: '3.12.0'
-
-      - name: 🔧 Install build tool
-        run: |
-          python -m pip install --upgrade build twine
-
-      - name: 📦 Build package
-        run: |
-          python -m build
-
-      - name: 🚀 Publish to PyPI
-        run: |
-         
-       
+          name: android-artifacts
+          path: android_artifacts/**

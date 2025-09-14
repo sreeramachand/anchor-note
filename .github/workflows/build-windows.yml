@@ -1,36 +1,73 @@
-name: 🚀 Publish to PyPI
+name: Build Windows EXEs
 
 on:
   push:
-    tags:
-      - 'v*'  # Triggers when you push a version tag
+    branches: [ main ]
+  workflow_dispatch:
 
 permissions:
   contents: read
+  packages: write
 
 jobs:
-  build-and-publish:
-    name: Build and publish to PyPI
-    runs-on: ubuntu-latest
-
+  build-windows:
+    name: Build (Windows)
+    runs-on: windows-latest
     steps:
-      - name: 🧾 Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: 🐍 Set up Python
-        uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v4
         with:
-          python-version: '3.12.0'
+          python-version: "3.11"
 
-      - name: 🔧 Install build tool
-        run: |
-          python -m pip install --upgrade build twine
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
 
-      - name: 📦 Build package
+      - name: Install dependencies
         run: |
-          python -m build
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller pygame plyer pywin32
 
-      - name: 🚀 Publish to PyPI
+      - name: Build GUI agent EXE (PyInstaller)
+        working-directory: ${{ github.workspace }}
         run: |
-         
-       
+          pyinstaller --clean --log-level=INFO windows/pyinstaller-agent.spec
+
+      - name: Build Service EXE (PyInstaller)
+        working-directory: ${{ github.workspace }}
+        run: |
+          pyinstaller --clean --log-level=INFO windows/pyinstaller-service.spec
+
+      - name: Package artifacts (zip dist folders)
+        run: |
+          $ts = Get-Date -Format "yyyyMMddHHmmss"
+          $agentZip = "anchor_note_agent_$ts.zip"
+          $serviceZip = "anchor_note_service_$ts.zip"
+          if (Test-Path dist\anchor_note_agent) {
+            Compress-Archive -Path dist\anchor_note_agent\* -DestinationPath $agentZip -Force
+            Write-Output "Created $agentZip"
+          }
+          if (Test-Path dist\anchor_note_service) {
+            Compress-Archive -Path dist\anchor_note_service\* -DestinationPath $serviceZip -Force
+            Write-Output "Created $serviceZip"
+          }
+          # list files
+          Get-ChildItem -Path . -Filter "*.zip" | Format-Table -AutoSize
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-exes
+          path: |
+            anchor_note_agent_*.zip
+            anchor_note_service_*.zip
+            dist/anchor_note_agent/**
+            dist/anchor_note_service/**
