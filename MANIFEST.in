@@ -1,0 +1,9 @@
+# include package data and platform assets
+recursive-include sticky_remind/assets *
+recursive-include windows *
+recursive-include android *
+include pyproject.toml
+include setup.cfg
+include README.md
+include LICENSE
+include requirements.txt

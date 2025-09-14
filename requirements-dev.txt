@@ -1,0 +1,10 @@
+# developer/test tooling
+pytest
+pytest-cov
+black
+ruff
+flake8
+mypy
+build
+twine
+pre-commit

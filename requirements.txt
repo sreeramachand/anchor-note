@@ -1,0 +1,10 @@
+# core runtime dependencies
+ics>=0.7
+apscheduler>=3.6
+plyer>=2.0
+pygame>=2.0
+caldav>=0.9
+google-auth>=2.0
+google-auth-oauthlib>=0.4
+google-api-python-client>=2.0
+tzlocal>=4.0

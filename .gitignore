@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# venv
+.venv/
+venv/
+env/
+
+# packaging
+build/
+dist/
+*.egg-info/
+
+# PyInstaller
+*.spec
+dist/
+build/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor metadata
+.vscode/
+.idea/
+
+# logs
+*.log
+
+# local config
+.local_config.json
